@@ -21,13 +21,15 @@ from __future__ import annotations
 import datetime
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 # --- config -----------------------------------------------------------------
 
-REPO_URL = "https://github.com/marnixboersema/studeerkamer-vault.git"
+REPO_URL = "https://x-access-token@github.com/marnixboersema/studeerkamer-vault.git"
+ASKPASS = Path(__file__).resolve().parent / "askpass.sh"
 VAULT_CACHE = Path("/var/lib/brein/vault-cache")
 STATE_FILE = Path("/var/lib/brein/vault-sync-state.json")
 LOG_FILE = Path("/var/log/brein-vault-sync.log")
@@ -83,23 +85,33 @@ def sha256_of(path: Path) -> str:
     return h.hexdigest()
 
 
-def run(cmd: list[str]) -> subprocess.CompletedProcess:
-    return subprocess.run(cmd, check=True, text=True, capture_output=True)
+def run(cmd: list[str], env: dict | None = None) -> subprocess.CompletedProcess:
+    return subprocess.run(cmd, check=True, text=True, capture_output=True, env=env)
 
 
 # --- git --------------------------------------------------------------------
 
 
-def git_clone_or_fetch(auth_url: str) -> str:
+def git_env() -> dict:
+    """Env for git calls. GIT_ASKPASS feeds the PAT to git from a file so the
+    token never appears in argv, the remote URL, or tracebacks on failure."""
+    env = os.environ.copy()
+    env["GIT_ASKPASS"] = str(ASKPASS)
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    return env
+
+
+def git_clone_or_fetch() -> str:
     """Bring the cache to origin/main HEAD. Return current SHA."""
+    env = git_env()
     if not (VAULT_CACHE / ".git").exists():
         log(f"first sync — cloning vault into {VAULT_CACHE}")
         VAULT_CACHE.parent.mkdir(parents=True, exist_ok=True)
-        run(["git", "clone", "--quiet", auth_url, str(VAULT_CACHE)])
+        run(["git", "clone", "--quiet", REPO_URL, str(VAULT_CACHE)], env=env)
     else:
-        run(["git", "-C", str(VAULT_CACHE), "remote", "set-url", "origin", auth_url])
-        run(["git", "-C", str(VAULT_CACHE), "fetch", "--quiet", "origin", "main"])
-        run(["git", "-C", str(VAULT_CACHE), "reset", "--quiet", "--hard", "origin/main"])
+        run(["git", "-C", str(VAULT_CACHE), "remote", "set-url", "origin", REPO_URL], env=env)
+        run(["git", "-C", str(VAULT_CACHE), "fetch", "--quiet", "origin", "main"], env=env)
+        run(["git", "-C", str(VAULT_CACHE), "reset", "--quiet", "--hard", "origin/main"], env=env)
     return run(["git", "-C", str(VAULT_CACHE), "rev-parse", "HEAD"]).stdout.strip()
 
 
@@ -202,16 +214,17 @@ def delete_file(file_id: str, owui_token: str) -> bool:
 
 
 def main() -> int:
-    gh_token = read_secret(GH_TOKEN_FILE)
+    # Validate the GH token file exists & is non-empty. askpass.sh reads it
+    # at git-call time so the token never enters argv or the URL.
+    read_secret(GH_TOKEN_FILE)
     owui_token = read_secret(OWUI_TOKEN_FILE)
     collection_id = read_secret(COLLECTION_ID_FILE)
 
-    auth_url = REPO_URL.replace(
-        "https://", f"https://x-access-token:{gh_token}@"
-    )
+    if not ASKPASS.exists():
+        die(f"askpass helper missing: {ASKPASS}")
 
     log("--- sync run start ---")
-    current_sha = git_clone_or_fetch(auth_url)
+    current_sha = git_clone_or_fetch()
     log(f"vault HEAD: {current_sha[:7]}")
 
     state: dict = {"last_commit": None, "files": {}}

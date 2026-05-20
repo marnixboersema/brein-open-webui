@@ -31,6 +31,11 @@ SCRIPT="$HERE/sync-vault.py"
 [[ -f "$SCRIPT" ]] || { echo "Cannot find $SCRIPT"; exit 1; }
 chmod 755 "$SCRIPT"
 
+# Askpass helper — git uses this to read the PAT without it ever entering argv.
+ASKPASS="$HERE/askpass.sh"
+[[ -f "$ASKPASS" ]] || { echo "Cannot find $ASKPASS"; exit 1; }
+chmod 700 "$ASKPASS"
+
 # Cron — hourly at :17, wrapped in flock to prevent overlapping runs.
 CRON_DST=/etc/cron.d/brein-vault-sync
 cat > "$CRON_DST" <<EOF
