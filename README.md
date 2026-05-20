@@ -295,6 +295,10 @@ bash /opt/brein/backup.sh
 ls -lh /var/backups/brein/
 ```
 
+### D.8 (Optional) — Sync an external Obsidian vault into a Knowledge collection
+
+If you want a private vault (e.g. `studeerkamer-vault`) auto-mirrored into an Open WebUI Knowledge collection so chats can RAG over it, see [`sync-vault/README.md`](sync-vault/README.md). Hourly cron pulls from GitHub, SHA-gated so only changed files re-embed. Admin-only by default.
+
 ---
 
 ## Verify everything works
