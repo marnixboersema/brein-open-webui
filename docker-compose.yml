@@ -9,7 +9,8 @@ services:
       - open-webui-data:/app/backend/data
     env_file:
       - .env
-    mem_limit: 3g
+    # 2g (not 3g) leaves headroom for WAHA's headless-Chrome WEBJS engine on the CX22.
+    mem_limit: 2g
     healthcheck:
       test: ["CMD-SHELL", "curl --silent --fail http://localhost:8080/health | jq -ne 'input.status == true' || exit 1"]
       interval: 30s
@@ -17,6 +18,20 @@ services:
       retries: 3
       start_period: 60s
 
+  waha:
+    image: devlikeapro/waha:${WAHA_DOCKER_TAG:-latest}
+    container_name: brein-waha
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - waha-sessions:/app/.sessions
+    env_file:
+      - .env
+    mem_limit: 1g
+
 volumes:
   open-webui-data:
     name: open-webui-data
+  waha-sessions:
+    name: waha-sessions

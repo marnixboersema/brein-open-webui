@@ -13,10 +13,11 @@ This README walks from "fresh MacBook" to "wife and kids using it on their phone
 3. [Phase B — Hetzner Cloud Console](#phase-b--hetzner-cloud-console)
 4. [Phase C — DNS](#phase-c--dns)
 5. [Phase D — Deploy on the VPS](#phase-d--deploy-on-the-vps)
-6. [Verify everything works](#verify-everything-works)
-7. [Day-2 ops](#day-2-ops)
-8. [Estimated monthly cost](#estimated-monthly-cost)
-9. [Troubleshooting](#troubleshooting)
+6. [Phase E — WAHA (WhatsApp HTTP API)](#phase-e--waha-whatsapp-http-api)
+7. [Verify everything works](#verify-everything-works)
+8. [Day-2 ops](#day-2-ops)
+9. [Estimated monthly cost](#estimated-monthly-cost)
+10. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -28,6 +29,7 @@ Read this checklist once before starting — each phase depends on the previous 
 - [ ] **Phase B** — Create a Hetzner project, upload the SSH pubkey, create the CX22 VPS, set up the Cloud Firewall, note IPv4 + IPv6.
 - [ ] **Phase C** — Add A + AAAA records at your domain registrar for `brein`. Wait for propagation.
 - [ ] **Phase D** — SSH in, clone the repo, run `setup.sh`, fill `.env`, drop in PWA icons, install Caddyfile, `docker compose up -d`, install cron.
+- [ ] **Phase E** — (optional) Add the `waha` DNS record, fill the WAHA env vars, scan the QR code, send a test message.
 - [ ] **Verify** — TLS, both providers, RAG, healthcheck, PWA tile.
 - [ ] **Create family accounts** in the admin UI.
 - [ ] **Set a default system prompt** via Workspace > Models.
@@ -286,7 +288,7 @@ crontab /tmp/cron.tmp && rm /tmp/cron.tmp
 crontab -l
 ```
 
-Sundays at 03:00 server time, `backup.sh` will stop the container (~10 s pause), tar the volume to `/var/backups/brein/brein-YYYY-MM-DD.tar.gz`, restart, and prune to the 4 most recent archives.
+Sundays at 03:00 server time, `backup.sh` will stop both containers (~10 s pause), tar the `open-webui-data` and `waha-sessions` volumes to `/var/backups/brein/brein-YYYY-MM-DD.tar.gz` and `waha-YYYY-MM-DD.tar.gz`, restart, and prune each to the 4 most recent archives.
 
 Run it once manually to confirm it works:
 
@@ -298,6 +300,110 @@ ls -lh /var/backups/brein/
 ### D.8 (Optional) — Sync an external Obsidian vault into a Knowledge collection
 
 If you want a private vault (e.g. `studeerkamer-vault`) auto-mirrored into an Open WebUI Knowledge collection so chats can RAG over it, see [`sync-vault/README.md`](sync-vault/README.md). Hourly cron pulls from GitHub, SHA-gated so only changed files re-embed. Admin-only by default.
+
+---
+
+## Phase E — WAHA (WhatsApp HTTP API)
+
+WAHA gives you a REST API to send and receive WhatsApp messages from the VPS. This is the free Core edition (`devlikeapro/waha`), WEBJS engine, single session. Same `.env`, same `docker compose`, same backup cron — added as a second service.
+
+Skip this phase if you don't want WhatsApp. Open WebUI runs independently.
+
+### E.1 DNS — add `waha`
+
+At Afrihost, add a second pair of records on the zone (alongside the `brein` ones from Phase C):
+
+| Type | Name | Value                                | TTL |
+|------|------|--------------------------------------|-----|
+| A    | waha | `<IPv4 from Phase B>`                | 300 |
+| AAAA | waha | `<IPv6 from Phase B — full address>` | 300 |
+
+Same VPS, different subdomain. Confirm:
+
+```bash
+dig +short waha.marnixboersema.co.za A
+dig +short waha.marnixboersema.co.za AAAA
+```
+
+Both must return the VPS IPs before Caddy can issue a cert.
+
+### E.2 Fill WAHA env vars
+
+```bash
+ssh brein
+cd /opt/brein
+
+# API key + dashboard password — generate strong values
+openssl rand -hex 32        # use this for WHATSAPP_API_KEY
+openssl rand -base64 24     # use this for WAHA_DASHBOARD_PASSWORD / SWAGGER_PASSWORD
+
+nano .env
+```
+
+Set in `.env`:
+
+- `WHATSAPP_API_KEY` — the hex string from `openssl rand -hex 32`. Required on every `/api/*` call as `X-Api-Key`.
+- `WAHA_DASHBOARD_PASSWORD` + `WHATSAPP_SWAGGER_PASSWORD` — strong passwords (the dashboard can scan QR and send messages, treat it like admin).
+
+Leave `WHATSAPP_HOOK_URL` commented out — that's for the future LLM bridge.
+
+### E.3 Update Caddy + start WAHA
+
+The repo's `Caddyfile` already has the `waha.marnixboersema.co.za` block. Reinstall it and bring up both services:
+
+```bash
+cp /opt/brein/Caddyfile /etc/caddy/Caddyfile
+systemctl reload caddy
+
+cd /opt/brein
+docker compose pull
+docker compose up -d
+docker compose ps
+```
+
+Note: `docker compose up -d` will also **recreate `open-webui`** because we dropped its `mem_limit` from 3 GB to 2 GB to make headroom for WAHA. Expect ~30 s of downtime on the brein subdomain.
+
+Caddy provisions the cert for `waha.marnixboersema.co.za` on the first request. Tail `journalctl -u caddy -f` and wait for `certificate obtained successfully`.
+
+### E.4 Scan the QR code
+
+On any browser:
+
+> https://waha.marnixboersema.co.za/dashboard
+
+Sign in with `WAHA_DASHBOARD_USERNAME` + `WAHA_DASHBOARD_PASSWORD`. Click **Start** on the `default` session, then **Show QR**. Open WhatsApp on the phone you want to use as the bot → **Settings** → **Linked devices** → **Link a device** → scan.
+
+Session state is written to the `waha-sessions` Docker volume (and into the weekly backup), so you only do this once. Container restarts and `docker compose pull` won't lose it.
+
+### E.5 Send a test message
+
+From the Mac (replace `27821234567` with a real number in international format, no `+`, no spaces, append `@c.us`):
+
+```bash
+curl -X POST https://waha.marnixboersema.co.za/api/sendText \
+  -H "X-Api-Key: <your WHATSAPP_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "session": "default",
+        "chatId": "27821234567@c.us",
+        "text":   "Hallo van WAHA"
+      }'
+```
+
+Expected: `200 OK` with a JSON message ID, and the message lands on the recipient's phone.
+
+API reference (Swagger UI) is at https://waha.marnixboersema.co.za/ — sign in with the swagger credentials.
+
+### E.6 Hook up to Open WebUI later
+
+When you're ready to make the WhatsApp number an LLM bot, you'll need a small bridge service that:
+
+1. Receives WAHA webhooks at `WHATSAPP_HOOK_URL` (set in `.env`).
+2. Filters out non-message events and your own messages (avoid loops).
+3. Calls Open WebUI's OpenAI-compatible API at `http://open-webui:8080/api/chat/completions` with the user's text.
+4. Posts the reply back via `POST /api/sendText`.
+
+Options: a ~50-line FastAPI service in a third compose service, or n8n with a WAHA-trigger + HTTP-Request node. Both can stay on the same VPS. Ping me when you want this added.
 
 ---
 
@@ -367,6 +473,8 @@ If the new version breaks something, roll back: edit `.env` to the previous tag,
 
 ### Restore from backup
 
+Open WebUI:
+
 ```bash
 ssh brein
 cd /opt/brein
@@ -380,7 +488,22 @@ docker run --rm \
 docker compose up -d
 ```
 
-Replace `brein-YYYY-MM-DD.tar.gz` with the archive you want. The container restarts pointing at the restored data.
+WAHA session (only if you've lost the QR-scanned session and want to avoid re-pairing):
+
+```bash
+ssh brein
+cd /opt/brein
+docker compose stop waha
+docker volume rm waha-sessions
+docker volume create --name waha-sessions
+docker run --rm \
+    -v waha-sessions:/data \
+    -v /var/backups/brein:/backup \
+    alpine sh -c "cd / && tar xzf /backup/waha-YYYY-MM-DD.tar.gz"
+docker compose up -d waha
+```
+
+Replace `YYYY-MM-DD` with the archive you want. The container restarts pointing at the restored data.
 
 ### Where to monitor spend
 
@@ -479,8 +602,11 @@ On the VPS after deploy:
 ├── icon-512.png
 └── apple-touch-icon.png
 
-/var/backups/brein/         # weekly tar.gz, 4 most recent
-└── brein-YYYY-MM-DD.tar.gz
+/var/backups/brein/         # weekly tar.gz, 4 most recent per volume
+├── brein-YYYY-MM-DD.tar.gz
+└── waha-YYYY-MM-DD.tar.gz
 ```
 
-Docker named volume `open-webui-data` holds `/app/backend/data` — SQLite DB, ChromaDB vectors, uploaded RAG sources, embedding cache.
+Docker named volumes:
+- `open-webui-data` — `/app/backend/data` — SQLite DB, ChromaDB vectors, uploaded RAG sources, embedding cache.
+- `waha-sessions` — `/app/.sessions` — WhatsApp Web session state (QR-paired credentials, chat metadata cache). Lose it and you re-scan the QR.
