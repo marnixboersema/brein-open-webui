@@ -24,6 +24,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 # --- config -----------------------------------------------------------------
@@ -43,6 +44,13 @@ COLLECTION_ID_FILE = Path("/root/.brein-owui-collection-id")
 SKIP_PREFIXES = (".git", ".obsidian", "_meta", "Templates")
 # Only these extensions get synced.
 SYNC_EXTS = (".md",)
+
+# Throttling — the VPS only has 4 GB; uploading 500 files back-to-back
+# overwhelms the OWUI embedding pipeline. Sleep between operations so the
+# embedding queue drains. Tune via env if needed.
+UPLOAD_SLEEP_SEC = float(os.environ.get("BREIN_SYNC_SLEEP", "2.0"))
+# Curl timeout per HTTP call so a hung embed doesn't block the whole run.
+CURL_MAX_TIME = os.environ.get("BREIN_CURL_TIMEOUT", "120")
 
 
 # --- helpers ----------------------------------------------------------------
@@ -157,7 +165,8 @@ def upload_file(rel: str, owui_token: str) -> str | None:
     try:
         result = subprocess.run(
             [
-                "curl", "-sS", "--fail-with-body", "-X", "POST",
+                "curl", "-sS", "--fail-with-body", "--max-time", CURL_MAX_TIME,
+                "-X", "POST",
                 "-H", f"Authorization: Bearer {owui_token}",
                 "-F", f"file=@{path};filename={fname};type=text/markdown",
                 f"{OWUI_BASE}/api/v1/files/",
@@ -179,7 +188,8 @@ def attach_file(file_id: str, collection_id: str, owui_token: str) -> bool:
     try:
         subprocess.run(
             [
-                "curl", "-sS", "--fail-with-body", "-X", "POST",
+                "curl", "-sS", "--fail-with-body", "--max-time", CURL_MAX_TIME,
+                "-X", "POST",
                 "-H", f"Authorization: Bearer {owui_token}",
                 "-H", "Content-Type: application/json",
                 "-d", json.dumps({"file_id": file_id}),
@@ -198,7 +208,8 @@ def delete_file(file_id: str, owui_token: str) -> bool:
     try:
         subprocess.run(
             [
-                "curl", "-sS", "--fail-with-body", "-X", "DELETE",
+                "curl", "-sS", "--fail-with-body", "--max-time", CURL_MAX_TIME,
+                "-X", "DELETE",
                 "-H", f"Authorization: Bearer {owui_token}",
                 f"{OWUI_BASE}/api/v1/files/{file_id}",
             ],
@@ -208,6 +219,22 @@ def delete_file(file_id: str, owui_token: str) -> bool:
     except subprocess.CalledProcessError as e:
         log(f"  delete failed for {file_id}: {(e.stderr or e.stdout or '')[:300]}")
         return False
+
+
+def save_state(files: dict, last_commit: str | None) -> None:
+    """Atomic state write — called after every successful op so a crash
+    mid-run doesn't lose progress. last_commit stays at the previous synced
+    sha until ALL ops complete; that way a partial run re-plans correctly
+    on the next cron tick."""
+    new_state = {
+        "last_commit": last_commit,
+        "last_synced": now_iso(),
+        "files": files,
+    }
+    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = STATE_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(new_state, indent=2, sort_keys=True))
+    tmp.replace(STATE_FILE)
 
 
 # --- main -------------------------------------------------------------------
@@ -256,44 +283,57 @@ def main() -> int:
         if rel not in current_files:
             to_delete.append((rel, meta["owui_id"]))
 
+    total_ops = len(to_upload) + len(to_replace) + len(to_delete)
     log(
         f"plan: upload={len(to_upload)} replace={len(to_replace)} "
-        f"delete={len(to_delete)}"
+        f"delete={len(to_delete)} (sleep={UPLOAD_SLEEP_SEC}s between ops)"
     )
 
+    previous_commit = state.get("last_commit")
     new_files: dict[str, dict[str, str]] = dict(previous_files)
+    op_count = 0
+
+    def progress(rel: str, kind: str) -> None:
+        nonlocal op_count
+        op_count += 1
+        log(f"  [{op_count}/{total_ops}] {kind} {rel}")
 
     for rel, old_id in to_delete:
-        log(f"  - {rel}")
+        progress(rel, "-")
         delete_file(old_id, owui_token)
         new_files.pop(rel, None)
+        save_state(new_files, previous_commit)
 
     for rel, old_id in to_replace:
-        log(f"  ~ {rel}")
+        progress(rel, "~")
         delete_file(old_id, owui_token)
         new_id = upload_file(rel, owui_token)
         if new_id and attach_file(new_id, collection_id, owui_token):
             new_files[rel] = {"owui_id": new_id, "sha256": current_files[rel]}
         else:
             new_files.pop(rel, None)
+        save_state(new_files, previous_commit)
+        time.sleep(UPLOAD_SLEEP_SEC)
 
     for rel in to_upload:
-        log(f"  + {rel}")
+        progress(rel, "+")
         new_id = upload_file(rel, owui_token)
         if new_id and attach_file(new_id, collection_id, owui_token):
             new_files[rel] = {"owui_id": new_id, "sha256": current_files[rel]}
+            save_state(new_files, previous_commit)
+        time.sleep(UPLOAD_SLEEP_SEC)
 
-    new_state = {
-        "last_commit": current_sha,
-        "last_synced": now_iso(),
-        "files": new_files,
-    }
-    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = STATE_FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(new_state, indent=2, sort_keys=True))
-    tmp.replace(STATE_FILE)
+    # Only advance last_commit if everything in the plan succeeded; otherwise
+    # leave it at the previous value so the next cron run re-plans the gaps.
+    successful = sum(1 for rel in current_files if rel in new_files)
+    final_commit = current_sha if successful == len(current_files) else previous_commit
+    save_state(new_files, final_commit)
 
-    log(f"sync complete. tracking {len(new_files)} files")
+    if final_commit == current_sha:
+        log(f"sync complete. tracking {len(new_files)} files")
+    else:
+        missing = len(current_files) - successful
+        log(f"sync partial: {missing} files still need uploading — next cron run will retry")
     return 0
 
 
