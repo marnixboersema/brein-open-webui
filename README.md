@@ -421,6 +421,48 @@ Watch the first month's OpenAI dashboard closely, then set a hard cap.
 - Most common cause: bad API key. Check `.env`, then restart: `docker compose up -d`.
 - Cold start can take 60 s — wait before panicking.
 
+### Site returns 500 after PDF upload
+
+The CX22's 4 GB RAM + 3 GB container limit is tight. Uploading a heavy PDF (especially scanned / image-heavy) can spike memory during parsing, OOM-kill the Open WebUI worker mid-write to Chroma, and leave the vector DB in a state where every subsequent request 500s. Telltale: the SPA loads the "Hello, …" greeting but skeleton loaders never resolve.
+
+Recovery ladder — try in order, escalate only if the previous step doesn't take.
+
+1. **Restart from anywhere (works on a phone).** Hetzner Cloud Console → your server → **Restart** (graceful — *not* Power Off / Power Reset). Wait ~90 s, reload. Clears the in-memory variant. **Delete the offending PDF in the UI before re-uploading it**, or it'll OOM again.
+
+2. **SSH restart**, if the Hetzner one didn't take:
+
+   ```bash
+   ssh brein
+   cd /opt/brein && docker compose restart open-webui
+   ```
+
+3. **Restore from the last weekly backup** (loses anything since Sunday 03:00):
+
+   ```bash
+   ssh brein
+   cd /opt/brein
+   docker compose down
+   docker volume rm open-webui-data
+   docker volume create --name open-webui-data
+   LATEST=$(ls -1t /var/backups/brein/brein-*.tar.gz | head -1)
+   docker run --rm -v open-webui-data:/data -v /var/backups/brein:/backup \
+     alpine sh -c "cd / && tar xzf /backup/$(basename "$LATEST")"
+   docker compose up -d
+   ```
+
+4. **Wipe vector_db only** (keeps users + chats + settings; loses all Knowledge embeddings — `sync-vault` re-builds Studeerkamer on its next :17 tick; other collections you re-upload):
+
+   ```bash
+   ssh brein
+   cd /opt/brein
+   docker compose stop open-webui
+   docker run --rm -v open-webui-data:/data alpine sh -c 'rm -rf /data/vector_db'
+   docker compose up -d open-webui
+   /opt/brein/sync-vault/sync-vault.py    # immediate re-sync instead of waiting for cron
+   ```
+
+Prevention is in `.env`: `PDF_EXTRACT_IMAGES=false` disables OCR (the memory hot-path) and `RAG_FILE_MAX_SIZE_MB=10` refuses oversized PDFs at the boundary. Both are in `.env.example` — if your existing `.env` predates them, add them by hand and `docker compose up -d`.
+
 ### Anthropic model doesn't appear in the picker
 
 - Confirm the Anthropic URL ends `/v1` (no trailing slash, no `/messages`).
