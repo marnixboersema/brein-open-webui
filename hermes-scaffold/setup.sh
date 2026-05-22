@@ -77,8 +77,8 @@ loginctl enable-linger "$HERMES_USER"
 # 4 GB CX22 will OOM under simultaneous brein + browser-using Hermes load.
 # -----------------------------------------------------------------------------
 log "Installing user-hermes.slice memory cap (MemoryMax=1.5G, MemoryHigh=1.2G)"
-install -d -m 0755 /etc/systemd/system/user-.slice.d
 HERMES_UID=$(id -u "$HERMES_USER")
+install -d -m 0755 "/etc/systemd/system/user-${HERMES_UID}.slice.d"
 cat >"/etc/systemd/system/user-${HERMES_UID}.slice.d/50-hermes-memory.conf" <<EOF
 [Slice]
 MemoryAccounting=yes
