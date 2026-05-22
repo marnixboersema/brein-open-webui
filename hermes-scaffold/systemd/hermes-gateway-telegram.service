@@ -6,7 +6,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/hermes gateway --platform telegram
+ExecStart=%h/.local/bin/hermes gateway run --replace --accept-hooks
 Restart=on-failure
 RestartSec=10
 EnvironmentFile=%h/.hermes/.env
