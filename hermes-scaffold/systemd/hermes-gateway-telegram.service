@@ -9,6 +9,10 @@ Type=simple
 ExecStart=%h/.local/bin/hermes gateway run --replace --accept-hooks
 Restart=on-failure
 RestartSec=10
+# Hermes' agent.restart_drain_timeout defaults to 180s. systemd's default
+# TimeoutStopSec is 90s, which would SIGKILL the gateway mid-drain. Give it
+# 240s so the gateway can flush memory + persist sessions before exit.
+TimeoutStopSec=240s
 EnvironmentFile=%h/.hermes/.env
 
 # Soft / hard memory caps. The user-hermes.slice (set in /etc/systemd/system/
