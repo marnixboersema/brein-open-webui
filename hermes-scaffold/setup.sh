@@ -172,7 +172,10 @@ fi
 # must be pasted into ~/.hermes/.env first.
 # -----------------------------------------------------------------------------
 USER_UNIT_DIR="$HERMES_HOME/.config/systemd/user"
-install -d -m 0755 -o "$HERMES_USER" -g "$HERMES_USER" "$USER_UNIT_DIR"
+# `install -d -o hermes` only chowns the leaf; intermediate parents (.config,
+# .config/systemd) get created as root, which then blocks uv from writing
+# ~/.config/fish/conf.d at install time. Use sudo -u so every level is hermes.
+sudo -u "$HERMES_USER" mkdir -p "$USER_UNIT_DIR"
 install -m 0644 -o "$HERMES_USER" -g "$HERMES_USER" \
 	"$REPO_DIR/systemd/hermes-gateway-telegram.service" \
 	"$USER_UNIT_DIR/hermes-gateway-telegram.service"
