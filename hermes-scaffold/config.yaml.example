@@ -1,0 +1,39 @@
+# Hermes — non-secret config. Copied to ~/.hermes/config.yaml by setup.sh on
+# first install. Safe to edit and commit derivatives of this template; never
+# put API keys here (those live in ~/.hermes/.env).
+#
+# Reference: https://hermes-agent.nousresearch.com/docs/user-guide/configuration
+
+# Default model. `hermes setup` will overwrite this interactively. Pick one
+# of the two below to skip the wizard:
+#   anthropic/claude-opus-4-7   — best reasoning; uses ANTHROPIC_API_KEY
+#   openai/gpt-5-mini           — cheaper; uses OPENAI_API_KEY
+model: anthropic/claude-opus-4-7
+
+# Where Hermes runs the shell tools it issues. `local` is simplest (same VM
+# as the agent). `docker` would isolate but adds memory pressure on the CX22.
+terminal:
+  backend: local
+  timeout_seconds: 120
+
+# Browser automation (Playwright + Chromium). You picked "on" during setup,
+# which means the installer downloaded Chromium. Each browser session adds
+# 400-800 MB resident — the user-hermes.slice systemd cap (1.5 GB total) is
+# the safety net. If you start hitting OOMs, flip enabled to false here.
+browser:
+  enabled: true
+  headless: true
+  # Hard timeout on a single page load so a hung tab doesn't pin RAM forever.
+  navigation_timeout_seconds: 30
+
+memory:
+  # Path is relative to ~/.hermes/; persists across `hermes update`.
+  store: memory/
+
+# Gateway defaults. The Telegram gateway respects HERMES_TELEGRAM_USER_ALLOWLIST
+# from the .env (see .env.example). Keep `auto_reply` off by default — if you
+# turn it on, every Telegram message triggers a model call automatically.
+gateways:
+  telegram:
+    enabled: false   # systemd unit launches the gateway; this is a no-op gate
+    auto_reply: false

@@ -1,0 +1,33 @@
+[Unit]
+Description=Hermes Telegram gateway
+Documentation=https://hermes-agent.nousresearch.com/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/hermes gateway --platform telegram
+Restart=on-failure
+RestartSec=10
+EnvironmentFile=%h/.hermes/.env
+
+# Soft / hard memory caps. The user-hermes.slice (set in /etc/systemd/system/
+# user-<UID>.slice.d/50-hermes-memory.conf by setup.sh) caps the whole user
+# at 1.5 GB; this unit is the per-service quota inside that.
+MemoryHigh=768M
+MemoryMax=1G
+
+# Don't let a crash loop drown journald.
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=100
+
+# Minor hardening — gateway only needs read-only access to the home dir and
+# write access to the memory store.
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.hermes
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

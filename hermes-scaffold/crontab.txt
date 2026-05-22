@@ -1,0 +1,8 @@
+# Hermes — weekly backup, Sundays at 03:30 server time. Offset from brein's
+# 03:00 backup so the two don't fight over IO.
+#
+# Install for the hermes user (setup.sh does this automatically):
+#   crontab -u hermes -l 2>/dev/null > /tmp/cron.tmp || true
+#   cat crontab.txt >> /tmp/cron.tmp
+#   crontab -u hermes /tmp/cron.tmp && rm /tmp/cron.tmp
+30 3 * * 0 /opt/hermes-src/backup.sh >> /var/log/hermes/backup.log 2>&1

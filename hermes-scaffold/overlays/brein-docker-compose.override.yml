@@ -1,0 +1,16 @@
+# Docker Compose override for /opt/brein/. Drops Open WebUI's memory cap from
+# 3 GB to 2.5 GB so Hermes (under the user-hermes.slice 1.5 GB cap) can coexist
+# on the 4 GB CX22 without OOM-killing each other.
+#
+# Apply on the VPS:
+#   sudo cp /opt/hermes-src/overlays/brein-docker-compose.override.yml \
+#     /opt/brein/docker-compose.override.yml
+#   (cd /opt/brein && sudo docker compose up -d)
+#
+# Roll back (if Open WebUI starts failing healthchecks under load):
+#   sudo rm /opt/brein/docker-compose.override.yml
+#   (cd /opt/brein && sudo docker compose up -d)
+services:
+  open-webui:
+    mem_limit: 2.5g
+    mem_reservation: 1g
