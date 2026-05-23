@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Installeer die Vera kennisbasis na ~/.hermes/profiles/vera/.
+# Installeer die Nonna kennisbasis na ~/.hermes/profiles/nonna/.
 # Idempotent — kan veilig herhaal word.
 set -euo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DEST="${HOME}/.hermes/profiles/vera"
+DEST="${HOME}/.hermes/profiles/nonna"
 
-log() { printf '\n\033[1;34m[vera-kb]\033[0m %s\n' "$*"; }
+log() { printf '\n\033[1;34m[nonna-kb]\033[0m %s\n' "$*"; }
 
 log "doel: ${DEST}"
 mkdir -p "${DEST}/workspace/kb"/{diary,homeschool,notes,pdfs/originals,pdfs/ocr}
@@ -16,7 +16,7 @@ install -m 0755 "${SRC}/workspace/kb/kb_manager.py" "${DEST}/workspace/kb/kb_man
 
 # SOUL.md: skep as dit ontbreek, anders voeg die KB-afdeling by (een keer).
 SOUL="${DEST}/SOUL.md"
-MARKER="<!-- vera-kb-section -->"
+MARKER="<!-- nonna-kb-section -->"
 if [[ ! -f "${SOUL}" ]]; then
   log "skep nuwe SOUL.md (slegs KB-afdeling — vul self die res in)"
   cat "${SRC}/SOUL-kb-section.md" > "${SOUL}"

@@ -1,6 +1,6 @@
-# Vera — kennisbasis
+# Nonna — kennisbasis
 
-SQLite FTS5-kennisbasis vir die Hermes Agent profiel **Vera**, Clarinda se
+SQLite FTS5-kennisbasis vir die Hermes Agent profiel **Nonna**, Clarinda se
 Telegram-assistent (Afrikaans). Klein voetafdruk — net `python3` en
 `sqlite3` (stdlib). PDF-pad gebruik `ocrmypdf` + `pdftotext` via
 subprocess.
@@ -8,9 +8,9 @@ subprocess.
 ## Wat hierdie gids bevat
 
 ```
-hermes/profiles/vera/
-  install.sh                 # rol uit na ~/.hermes/profiles/vera/
-  SOUL-kb-section.md         # word by Vera se SOUL.md gevoeg
+hermes/profiles/nonna/
+  install.sh                 # rol uit na ~/.hermes/profiles/nonna/
+  SOUL-kb-section.md         # word by Nonna se SOUL.md gevoeg
   workspace/kb/
     kb_manager.py            # CLI: add / search / list / show / delete / stats / ingest-pdf
     diary/  homeschool/  notes/  pdfs/originals/  pdfs/ocr/
@@ -21,15 +21,15 @@ hermes/profiles/vera/
 ```bash
 ssh brein
 git -C /opt/brein-src pull --ff-only
-bash /opt/brein-src/hermes/profiles/vera/install.sh
+bash /opt/brein-src/hermes/profiles/nonna/install.sh
 ```
 
 Die skrip:
 
-1. Skep `~/.hermes/profiles/vera/workspace/kb/` met al die sub-gidse.
+1. Skep `~/.hermes/profiles/nonna/workspace/kb/` met al die sub-gidse.
 2. Kopieer `kb_manager.py`.
-3. Voeg die KB-afdeling by `SOUL.md` (een keer — gemerk met `<!-- vera-kb-section -->`).
-4. Initialiseer die SQLite DB (`vera_kb.db`) — skema is in `kb_manager.py`.
+3. Voeg die KB-afdeling by `SOUL.md` (een keer — gemerk met `<!-- nonna-kb-section -->`).
+4. Initialiseer die SQLite DB (`nonna_kb.db`) — skema is in `kb_manager.py`.
 5. As root: installeer `tesseract-ocr {afr,eng}`, `ocrmypdf`, `poppler-utils`.
 
 ## Gebruik
@@ -37,14 +37,14 @@ Die skrip:
 Soek (Afrikaans-vriendelik — diakritiese tekens word geïgnoreer):
 
 ```bash
-python3 ~/.hermes/profiles/vera/workspace/kb/kb_manager.py search "wiskunde"
-python3 ~/.hermes/profiles/vera/workspace/kb/kb_manager.py search --type homeschool "grammatika"
+python3 ~/.hermes/profiles/nonna/workspace/kb/kb_manager.py search "wiskunde"
+python3 ~/.hermes/profiles/nonna/workspace/kb/kb_manager.py search --type homeschool "grammatika"
 ```
 
 Voeg by:
 
 ```bash
-python3 ~/.hermes/profiles/vera/workspace/kb/kb_manager.py add \
+python3 ~/.hermes/profiles/nonna/workspace/kb/kb_manager.py add \
     --type diary --title "Maandag" \
     --content "Vandag was lekker. Saskia het haar somme klaargemaak." \
     --tags "dagboek week-22"
@@ -55,7 +55,7 @@ Vir lang inhoud, gebruik `--content-file pad/na/teks.md`.
 PDF-inneem (OCR + indeks):
 
 ```bash
-python3 ~/.hermes/profiles/vera/workspace/kb/kb_manager.py ingest-pdf \
+python3 ~/.hermes/profiles/nonna/workspace/kb/kb_manager.py ingest-pdf \
     ~/Aflaaie/CC-Cycle-2.pdf --title "CC Cycle 2 Gids" --tags "homeschool cc"
 ```
 
@@ -75,5 +75,5 @@ Sien `workspace/kb/kb_manager.py` — `SCHEMA` aan die bo-kant. Kortliks:
 ## Voetafdruk
 
 Op die CX22 (3.7 GB RAM): geen agtergrond-diens nie. Die DB leef as een
-SQLite-lêer; `kb_manager.py` is 'n eenmaal-uitvoer-CLI. Vera roep dit aan
+SQLite-lêer; `kb_manager.py` is 'n eenmaal-uitvoer-CLI. Nonna roep dit aan
 wanneer sy soek of stoor — geheue-piek is minder as 'n grep.

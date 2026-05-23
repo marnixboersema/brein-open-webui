@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Vera KB — SQLite FTS5 kennisbasis vir die Hermes Agent profiel "vera".
+# Nonna KB — SQLite FTS5 kennisbasis vir die Hermes Agent profiel "nonna".
 # Stdlib only. PDF-paaie roep ocrmypdf en pdftotext via subprocess aan.
 
 import argparse
@@ -15,7 +15,7 @@ from datetime import datetime
 from pathlib import Path
 
 KB_DIR = Path(__file__).resolve().parent
-DB_PATH = KB_DIR / "vera_kb.db"
+DB_PATH = KB_DIR / "nonna_kb.db"
 PDF_ORIG = KB_DIR / "pdfs" / "originals"
 PDF_OCR = KB_DIR / "pdfs" / "ocr"
 
@@ -321,7 +321,7 @@ def cmd_ingest_pdf(args):
 def build_parser():
     p = argparse.ArgumentParser(
         prog="kb_manager",
-        description="Vera kennisbasis (SQLite FTS5).",
+        description="Nonna kennisbasis (SQLite FTS5).",
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 
